@@ -1,0 +1,1998 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WUMPUS — Logic Agent</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #0a0b0f;
+        --surface: #111318;
+        --surface2: #171a22;
+        --surface3: #1e2230;
+        --border: rgba(255, 255, 255, 0.07);
+        --border2: rgba(255, 255, 255, 0.12);
+        --text: #f0f2ff;
+        --text2: #8891b0;
+        --text3: #505870;
+        --accent: #4f8eff;
+        --accent2: #7b5ea7;
+        --safe: #22c55e;
+        --danger: #ef4444;
+        --warn: #f59e0b;
+        --gold: #fbbf24;
+        --wumpus: #9333ea;
+        --unknown: #2a2f42;
+        --visited: #1a2340;
+        --pit: #450a0a;
+        --font-display: "Syne", sans-serif;
+        --font-mono: "Space Mono", monospace;
+        --glow-safe: 0 0 20px rgba(34, 197, 94, 0.3);
+        --glow-danger: 0 0 20px rgba(239, 68, 68, 0.3);
+        --glow-accent: 0 0 30px rgba(79, 142, 255, 0.2);
+        --r: 8px;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--font-mono);
+        min-height: 100vh;
+        overflow-x: hidden;
+      }
+
+      /* ── SCANLINES OVERLAY ── */
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background: repeating-linear-gradient(
+          0deg,
+          transparent,
+          transparent 2px,
+          rgba(0, 0, 0, 0.03) 2px,
+          rgba(0, 0, 0, 0.03) 4px
+        );
+        pointer-events: none;
+        z-index: 1000;
+      }
+
+      /* ── LAYOUT ── */
+      .shell {
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        min-height: 100vh;
+      }
+
+      /* ── HEADER ── */
+      header {
+        padding: 20px 32px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: var(--surface);
+        position: sticky;
+        top: 0;
+        z-index: 100;
+      }
+      .logo {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .logo-mark {
+        width: 36px;
+        height: 36px;
+        border: 2px solid var(--accent);
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: var(--font-display);
+        font-weight: 800;
+        font-size: 14px;
+        color: var(--accent);
+        letter-spacing: -0.5px;
+        box-shadow: var(--glow-accent);
+      }
+      .logo-text {
+        font-family: var(--font-display);
+        font-weight: 800;
+        font-size: 20px;
+        letter-spacing: 2px;
+        color: var(--text);
+      }
+      .logo-sub {
+        font-size: 10px;
+        color: var(--text3);
+        letter-spacing: 3px;
+        text-transform: uppercase;
+      }
+      .header-status {
+        display: flex;
+        align-items: center;
+        gap: 24px;
+      }
+      .status-badge {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        letter-spacing: 1px;
+        color: var(--text3);
+      }
+      .status-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--safe);
+        box-shadow: 0 0 8px var(--safe);
+        animation: pulse 2s infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.4;
+        }
+      }
+
+      /* ── MAIN GRID ── */
+      main {
+        display: grid;
+        grid-template-columns: 280px 1fr 320px;
+        gap: 0;
+        height: calc(100vh - 65px);
+        overflow: hidden;
+      }
+
+      /* ── PANEL BASE ── */
+      .panel {
+        border-right: 1px solid var(--border);
+        overflow-y: auto;
+        padding: 20px;
+        scrollbar-width: thin;
+        scrollbar-color: var(--surface3) transparent;
+      }
+      .panel:last-child {
+        border-right: none;
+        border-left: 1px solid var(--border);
+      }
+      .panel-title {
+        font-family: var(--font-display);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 3px;
+        color: var(--text3);
+        text-transform: uppercase;
+        margin-bottom: 16px;
+      }
+
+      /* ── SETUP PANEL ── */
+      #setup-panel {
+      }
+      .setup-section {
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: var(--r);
+        padding: 16px;
+        margin-bottom: 12px;
+      }
+      .setup-label {
+        font-size: 10px;
+        letter-spacing: 2px;
+        color: var(--text3);
+        text-transform: uppercase;
+        margin-bottom: 10px;
+      }
+      .grid-config {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      .num-input {
+        background: var(--surface3);
+        border: 1px solid var(--border2);
+        border-radius: 6px;
+        color: var(--text);
+        font-family: var(--font-mono);
+        font-size: 20px;
+        font-weight: 700;
+        text-align: center;
+        padding: 8px;
+        width: 100%;
+        outline: none;
+        transition: border-color 0.2s;
+      }
+      .num-input:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 2px rgba(79, 142, 255, 0.15);
+      }
+      .num-label {
+        font-size: 10px;
+        color: var(--text3);
+        text-align: center;
+        margin-top: 4px;
+        letter-spacing: 1px;
+      }
+      .pit-slider-wrap {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .pit-slider-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      input[type="range"] {
+        flex: 1;
+        -webkit-appearance: none;
+        height: 4px;
+        border-radius: 2px;
+        background: var(--surface3);
+        outline: none;
+      }
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: var(--accent);
+        cursor: pointer;
+        box-shadow: 0 0 8px var(--accent);
+      }
+      .pit-count-display {
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--accent);
+        min-width: 24px;
+        text-align: right;
+      }
+      .btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 10px 16px;
+        border-radius: 6px;
+        border: 1px solid var(--border2);
+        background: var(--surface3);
+        color: var(--text);
+        font-family: var(--font-mono);
+        font-size: 12px;
+        letter-spacing: 1px;
+        cursor: pointer;
+        transition: all 0.15s;
+        width: 100%;
+        margin-bottom: 8px;
+      }
+      .btn:hover {
+        background: var(--surface);
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      .btn:active {
+        transform: scale(0.98);
+      }
+      .btn-primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #fff;
+        font-weight: 700;
+        box-shadow: var(--glow-accent);
+      }
+      .btn-primary:hover {
+        background: #6fa3ff;
+        border-color: #6fa3ff;
+        color: #fff;
+      }
+      .btn-danger {
+        border-color: rgba(239, 68, 68, 0.3);
+        color: var(--danger);
+      }
+      .btn-danger:hover {
+        background: rgba(239, 68, 68, 0.1);
+        border-color: var(--danger);
+      }
+      .btn-success {
+        border-color: rgba(34, 197, 94, 0.3);
+        color: var(--safe);
+      }
+      .btn-success:hover {
+        background: rgba(34, 197, 94, 0.1);
+        border-color: var(--safe);
+      }
+      .btn-warn {
+        border-color: rgba(245, 158, 11, 0.3);
+        color: var(--warn);
+      }
+      .btn-warn:hover {
+        background: rgba(245, 158, 11, 0.1);
+        border-color: var(--warn);
+      }
+
+      .divider {
+        height: 1px;
+        background: var(--border);
+        margin: 16px 0;
+      }
+
+      /* ── CONTROLS ── */
+      .controls-wrap {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 6px;
+        margin-bottom: 8px;
+      }
+      .dir-btn {
+        aspect-ratio: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--surface3);
+        border: 1px solid var(--border2);
+        border-radius: 6px;
+        color: var(--text2);
+        font-size: 18px;
+        cursor: pointer;
+        transition: all 0.1s;
+        user-select: none;
+      }
+      .dir-btn:hover {
+        background: var(--surface);
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      .dir-btn:active {
+        transform: scale(0.92);
+      }
+      .dir-btn.empty {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      /* ── CENTER: GAME BOARD ── */
+      #game-area {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: var(--bg);
+        overflow: hidden;
+        position: relative;
+      }
+      #game-area::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(
+          ellipse 600px 400px at 50% 50%,
+          rgba(79, 142, 255, 0.04) 0%,
+          transparent 70%
+        );
+        pointer-events: none;
+      }
+
+      #grid-container {
+        position: relative;
+      }
+
+      /* GRID */
+      #grid {
+        display: grid;
+        gap: 3px;
+        position: relative;
+      }
+      .cell {
+        position: relative;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+        cursor: default;
+        overflow: hidden;
+        transition:
+          border-color 0.3s,
+          box-shadow 0.3s,
+          background 0.3s;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+      }
+      .cell.unknown {
+        background: var(--unknown);
+      }
+      .cell.visited {
+        background: var(--visited);
+        border-color: rgba(79, 142, 255, 0.2);
+      }
+      .cell.safe {
+        background: rgba(34, 197, 94, 0.08);
+        border-color: rgba(34, 197, 94, 0.3);
+        box-shadow: inset 0 0 12px rgba(34, 197, 94, 0.05);
+      }
+      .cell.danger {
+        background: rgba(239, 68, 68, 0.08);
+        border-color: rgba(239, 68, 68, 0.3);
+      }
+      .cell.pit {
+        background: var(--pit);
+        border-color: rgba(239, 68, 68, 0.5);
+        box-shadow: var(--glow-danger);
+      }
+      .cell.wumpus {
+        background: rgba(147, 51, 234, 0.15);
+        border-color: rgba(147, 51, 234, 0.5);
+        box-shadow: 0 0 20px rgba(147, 51, 234, 0.3);
+      }
+      .cell.has-agent {
+        border-color: var(--accent) !important;
+        box-shadow: 0 0 16px rgba(79, 142, 255, 0.5) !important;
+      }
+
+      .cell-coord {
+        font-size: 9px;
+        color: var(--text3);
+        letter-spacing: 1px;
+        position: absolute;
+        top: 4px;
+        left: 5px;
+        line-height: 1;
+      }
+      .cell-icon {
+        font-size: 20px;
+        line-height: 1;
+        z-index: 1;
+      }
+      .cell-status {
+        font-size: 8px;
+        letter-spacing: 1px;
+        color: var(--text3);
+        text-transform: uppercase;
+        z-index: 1;
+      }
+      .cell-badges {
+        display: flex;
+        gap: 2px;
+        flex-wrap: wrap;
+        justify-content: center;
+        z-index: 1;
+      }
+      .badge {
+        font-size: 7px;
+        letter-spacing: 0.5px;
+        padding: 1px 4px;
+        border-radius: 3px;
+        text-transform: uppercase;
+        font-weight: 700;
+      }
+      .badge-breeze {
+        background: rgba(79, 142, 255, 0.2);
+        color: var(--accent);
+      }
+      .badge-stench {
+        background: rgba(147, 51, 234, 0.2);
+        color: var(--wumpus);
+      }
+      .badge-glitter {
+        background: rgba(251, 191, 36, 0.2);
+        color: var(--gold);
+      }
+
+      /* agent token */
+      .agent-token {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        background: var(--accent);
+        border: 2px solid rgba(255, 255, 255, 0.8);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        box-shadow: 0 0 20px var(--accent);
+        animation: agent-float 2s ease-in-out infinite;
+        position: relative;
+        z-index: 10;
+      }
+      @keyframes agent-float {
+        0%,
+        100% {
+          transform: translateY(0);
+        }
+        50% {
+          transform: translateY(-3px);
+        }
+      }
+
+      /* ── SCORE BAR ── */
+      .score-bar {
+        display: flex;
+        gap: 16px;
+        margin-bottom: 20px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--r);
+        padding: 12px 20px;
+        width: 100%;
+        max-width: 700px;
+      }
+      .score-item {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        flex: 1;
+      }
+      .score-label {
+        font-size: 9px;
+        color: var(--text3);
+        letter-spacing: 2px;
+        text-transform: uppercase;
+      }
+      .score-val {
+        font-family: var(--font-display);
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--text);
+      }
+      .score-val.positive {
+        color: var(--safe);
+      }
+      .score-val.negative {
+        color: var(--danger);
+      }
+      .score-divider {
+        width: 1px;
+        background: var(--border);
+      }
+
+      /* ── GAME OVER OVERLAY ── */
+      #gameover-overlay {
+        position: absolute;
+        inset: 0;
+        background: rgba(10, 11, 15, 0.92);
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        z-index: 50;
+        backdrop-filter: blur(4px);
+      }
+      #gameover-overlay.active {
+        display: flex;
+      }
+      .gameover-title {
+        font-family: var(--font-display);
+        font-size: 48px;
+        font-weight: 800;
+        letter-spacing: 4px;
+      }
+      .gameover-title.won {
+        color: var(--gold);
+        text-shadow: 0 0 40px rgba(251, 191, 36, 0.5);
+      }
+      .gameover-title.lost {
+        color: var(--danger);
+        text-shadow: 0 0 40px rgba(239, 68, 68, 0.5);
+      }
+      .gameover-msg {
+        color: var(--text2);
+        font-size: 14px;
+        letter-spacing: 1px;
+      }
+
+      /* ── RIGHT PANEL: KB & METRICS ── */
+      #metrics-panel {
+        overflow-y: auto;
+        padding: 20px;
+      }
+
+      .metric-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-bottom: 16px;
+      }
+      .metric-card {
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: var(--r);
+        padding: 12px;
+      }
+      .metric-label {
+        font-size: 9px;
+        letter-spacing: 2px;
+        color: var(--text3);
+        text-transform: uppercase;
+        margin-bottom: 6px;
+      }
+      .metric-val {
+        font-family: var(--font-display);
+        font-size: 24px;
+        font-weight: 700;
+        color: var(--text);
+        transition: color 0.3s;
+      }
+      .metric-val.accent {
+        color: var(--accent);
+      }
+      .metric-val.safe {
+        color: var(--safe);
+      }
+      .metric-val.warn {
+        color: var(--warn);
+      }
+
+      /* ── PERCEPT DISPLAY ── */
+      .percept-row {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-bottom: 16px;
+      }
+      .percept-pill {
+        padding: 5px 12px;
+        border-radius: 20px;
+        font-size: 11px;
+        letter-spacing: 1px;
+        font-weight: 700;
+        text-transform: uppercase;
+        border: 1px solid;
+        transition: all 0.3s;
+      }
+      .percept-pill.active.breeze {
+        background: rgba(79, 142, 255, 0.15);
+        border-color: var(--accent);
+        color: var(--accent);
+        box-shadow: 0 0 12px rgba(79, 142, 255, 0.2);
+      }
+      .percept-pill.active.stench {
+        background: rgba(147, 51, 234, 0.15);
+        border-color: var(--wumpus);
+        color: var(--wumpus);
+        box-shadow: 0 0 12px rgba(147, 51, 234, 0.2);
+      }
+      .percept-pill.active.glitter {
+        background: rgba(251, 191, 36, 0.15);
+        border-color: var(--gold);
+        color: var(--gold);
+        box-shadow: 0 0 12px rgba(251, 191, 36, 0.2);
+      }
+      .percept-pill.inactive {
+        background: transparent;
+        border-color: var(--border);
+        color: var(--text3);
+      }
+
+      /* ── KB CLAUSES ── */
+      .kb-list {
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: var(--r);
+        max-height: 200px;
+        overflow-y: auto;
+        padding: 10px;
+        margin-bottom: 16px;
+        scrollbar-width: thin;
+        scrollbar-color: var(--surface3) transparent;
+      }
+      .kb-clause {
+        font-size: 10px;
+        color: var(--text3);
+        padding: 3px 6px;
+        border-radius: 3px;
+        margin-bottom: 2px;
+        font-family: var(--font-mono);
+        letter-spacing: 0.5px;
+        transition: all 0.3s;
+        line-height: 1.4;
+      }
+      .kb-clause.new {
+        color: var(--accent);
+        background: rgba(79, 142, 255, 0.08);
+        animation: flash 0.5s ease-out;
+      }
+      @keyframes flash {
+        from {
+          background: rgba(79, 142, 255, 0.2);
+        }
+        to {
+          background: rgba(79, 142, 255, 0.08);
+        }
+      }
+
+      /* ── INFERENCE LOG ── */
+      .infer-log {
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: var(--r);
+        max-height: 180px;
+        overflow-y: auto;
+        padding: 10px;
+        scrollbar-width: thin;
+        scrollbar-color: var(--surface3) transparent;
+      }
+      .infer-entry {
+        font-size: 10px;
+        padding: 4px 8px;
+        border-radius: 3px;
+        margin-bottom: 3px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-left: 2px solid;
+        padding-left: 8px;
+      }
+      .infer-entry.safe {
+        border-color: var(--safe);
+        color: var(--safe);
+      }
+      .infer-entry.danger {
+        border-color: var(--danger);
+        color: var(--danger);
+      }
+      .infer-entry.unknown {
+        border-color: var(--text3);
+        color: var(--text3);
+      }
+      .infer-entry.pit {
+        border-color: var(--danger);
+        color: var(--danger);
+      }
+      .infer-entry.wumpus {
+        border-color: var(--wumpus);
+        color: var(--wumpus);
+      }
+      .infer-steps {
+        font-size: 9px;
+        background: var(--surface3);
+        padding: 2px 6px;
+        border-radius: 3px;
+      }
+
+      /* ── LEGEND ── */
+      .legend {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+        margin-bottom: 16px;
+      }
+      .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 10px;
+        color: var(--text3);
+        letter-spacing: 0.5px;
+      }
+      .legend-swatch {
+        width: 14px;
+        height: 14px;
+        border-radius: 3px;
+        flex-shrink: 0;
+      }
+
+      /* ── EVENT LOG ── */
+      .event-feed {
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: var(--r);
+        max-height: 150px;
+        overflow-y: auto;
+        padding: 8px;
+        scrollbar-width: thin;
+      }
+      .event-entry {
+        font-size: 10px;
+        color: var(--text3);
+        padding: 3px 6px;
+        border-radius: 3px;
+        margin-bottom: 2px;
+        font-family: var(--font-mono);
+        display: flex;
+        gap: 8px;
+      }
+      .event-entry.highlight {
+        color: var(--text2);
+      }
+      .event-time {
+        color: var(--text3);
+        min-width: 40px;
+      }
+
+      /* ── REVEAL PANEL ── */
+      .reveal-grid-overlay {
+        position: relative;
+      }
+      .reveal-marker {
+        position: absolute;
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        border: 2px solid;
+        transform: translate(-50%, -50%);
+        z-index: 20;
+        pointer-events: none;
+      }
+      .reveal-marker.pit-marker {
+        background: rgba(239, 68, 68, 0.3);
+        border-color: var(--danger);
+        box-shadow: var(--glow-danger);
+      }
+      .reveal-marker.wumpus-marker {
+        background: rgba(147, 51, 234, 0.3);
+        border-color: var(--wumpus);
+        box-shadow: 0 0 15px rgba(147, 51, 234, 0.4);
+      }
+      .reveal-marker.gold-marker {
+        background: rgba(251, 191, 36, 0.3);
+        border-color: var(--gold);
+        box-shadow: 0 0 15px rgba(251, 191, 36, 0.4);
+      }
+
+      /* ── FOOTER ── */
+      footer {
+        padding: 10px 32px;
+        border-top: 1px solid var(--border);
+        background: var(--surface);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 10px;
+        color: var(--text3);
+        letter-spacing: 1px;
+      }
+
+      /* ── ANIMATIONS ── */
+      .cell-enter {
+        animation: cell-pop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      }
+      @keyframes cell-pop {
+        from {
+          transform: scale(0.85);
+          opacity: 0;
+        }
+        to {
+          transform: scale(1);
+          opacity: 1;
+        }
+      }
+
+      .shake {
+        animation: shake 0.4s ease-in-out;
+      }
+      @keyframes shake {
+        0%,
+        100% {
+          transform: translateX(0);
+        }
+        20% {
+          transform: translateX(-8px);
+        }
+        40% {
+          transform: translateX(8px);
+        }
+        60% {
+          transform: translateX(-5px);
+        }
+        80% {
+          transform: translateX(5px);
+        }
+      }
+
+      /* ── TOOLTIP ── */
+      .cell-tooltip {
+        position: fixed;
+        background: var(--surface);
+        border: 1px solid var(--border2);
+        border-radius: var(--r);
+        padding: 8px 12px;
+        font-size: 11px;
+        pointer-events: none;
+        z-index: 200;
+        display: none;
+        max-width: 180px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      }
+      .cell-tooltip.visible {
+        display: block;
+      }
+
+      /* ── LOADING ── */
+      #loading {
+        position: fixed;
+        inset: 0;
+        background: var(--bg);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        gap: 16px;
+        transition: opacity 0.5s;
+      }
+      #loading.hide {
+        opacity: 0;
+        pointer-events: none;
+      }
+      .loader-title {
+        font-family: var(--font-display);
+        font-size: 32px;
+        font-weight: 800;
+        letter-spacing: 6px;
+        color: var(--accent);
+        text-shadow: var(--glow-accent);
+      }
+      .loader-bar {
+        width: 200px;
+        height: 2px;
+        background: var(--surface3);
+        border-radius: 1px;
+        overflow: hidden;
+      }
+      .loader-fill {
+        height: 100%;
+        background: var(--accent);
+        width: 0%;
+        animation: load 1.5s ease-out forwards;
+        box-shadow: 0 0 8px var(--accent);
+      }
+      @keyframes load {
+        to {
+          width: 100%;
+        }
+      }
+
+      /* ── AUTO PLAY ── */
+      #auto-indicator {
+        display: none;
+        align-items: center;
+        gap: 6px;
+        font-size: 10px;
+        color: var(--safe);
+        letter-spacing: 1px;
+      }
+      #auto-indicator.active {
+        display: flex;
+      }
+      .auto-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--safe);
+        animation: pulse 1s infinite;
+      }
+
+      /* ── KB SECTION ── */
+      .kb-toggle {
+        cursor: pointer;
+        user-select: none;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .kb-arrow {
+        font-size: 10px;
+        transition: transform 0.2s;
+        color: var(--text3);
+      }
+      .kb-arrow.open {
+        transform: rotate(90deg);
+      }
+
+      /* scrollbar */
+      ::-webkit-scrollbar {
+        width: 4px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: var(--surface3);
+        border-radius: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- LOADING -->
+    <div id="loading">
+      <div class="loader-title">WUMPUS</div>
+      <div style="font-size: 11px; color: var(--text3); letter-spacing: 3px">
+        LOGIC AGENT SYSTEM
+      </div>
+      <div class="loader-bar"><div class="loader-fill"></div></div>
+      <div style="font-size: 10px; color: var(--text3); letter-spacing: 2px">
+        INITIALIZING KNOWLEDGE BASE...
+      </div>
+    </div>
+
+    <!-- TOOLTIP -->
+    <div class="cell-tooltip" id="tooltip"></div>
+
+    <div class="shell">
+      <!-- ─── HEADER ─── -->
+      <header>
+        <div class="logo">
+          <div class="logo-mark">W</div>
+          <div>
+            <div class="logo-text">WUMPUS</div>
+            <div class="logo-sub">propositional logic agent</div>
+          </div>
+        </div>
+        <div class="header-status">
+          <div id="auto-indicator" class="active">
+            <div class="auto-dot"></div>
+            AUTO PLAY
+          </div>
+          <div class="status-badge">
+            <div class="status-dot"></div>
+            KB ACTIVE
+          </div>
+          <div
+            class="status-badge"
+            id="header-score"
+            style="color: var(--text2); font-size: 13px"
+          >
+            SCORE:
+            <span
+              id="h-score"
+              style="color: var(--text); font-weight: 700; margin-left: 4px"
+              >0</span
+            >
+          </div>
+        </div>
+      </header>
+
+      <!-- ─── MAIN ─── -->
+      <main>
+        <!-- LEFT: SETUP + CONTROLS -->
+        <div class="panel" id="setup-panel">
+          <div class="panel-title">Environment</div>
+
+          <div class="setup-section">
+            <div class="setup-label">Grid Dimensions</div>
+            <div class="grid-config">
+              <div>
+                <input
+                  type="number"
+                  class="num-input"
+                  id="rows-input"
+                  value="4"
+                  min="2"
+                  max="8"
+                />
+                <div class="num-label">ROWS</div>
+              </div>
+              <div>
+                <input
+                  type="number"
+                  class="num-input"
+                  id="cols-input"
+                  value="4"
+                  min="2"
+                  max="8"
+                />
+                <div class="num-label">COLS</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="setup-section">
+            <div class="setup-label">Pit Count</div>
+            <div class="pit-slider-wrap">
+              <div class="pit-slider-row">
+                <input
+                  type="range"
+                  id="pit-slider"
+                  min="1"
+                  max="6"
+                  value="2"
+                  step="1"
+                />
+                <div class="pit-count-display" id="pit-display">2</div>
+              </div>
+              <div
+                style="font-size: 9px; color: var(--text3); letter-spacing: 1px"
+              >
+                RANDOMLY PLACED EACH EPISODE
+              </div>
+            </div>
+          </div>
+
+          <button class="btn btn-primary" id="new-game-btn" onclick="newGame()">
+            ⬡ INITIALIZE WORLD
+          </button>
+          <button
+            class="btn btn-warn"
+            id="reveal-btn"
+            onclick="toggleReveal()"
+            disabled
+          >
+            ◎ REVEAL WORLD
+          </button>
+
+          <div class="divider"></div>
+
+          <div class="panel-title">Controls</div>
+
+          <div class="controls-wrap">
+            <div class="dir-btn empty"></div>
+            <div class="dir-btn" onclick="move('UP')" title="Move Up [↑]">
+              ↑
+            </div>
+            <div class="dir-btn empty"></div>
+            <div class="dir-btn" onclick="move('LEFT')" title="Move Left [←]">
+              ←
+            </div>
+            <div
+              class="dir-btn"
+              onclick="climb()"
+              title="Climb Out [C]"
+              style="font-size: 14px; color: var(--text3)"
+            >
+              ↥
+            </div>
+            <div class="dir-btn" onclick="move('RIGHT')" title="Move Right [→]">
+              →
+            </div>
+            <div class="dir-btn empty"></div>
+            <div class="dir-btn" onclick="move('DOWN')" title="Move Down [↓]">
+              ↓
+            </div>
+            <div class="dir-btn empty"></div>
+          </div>
+
+          <div
+            style="
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 6px;
+              margin-bottom: 8px;
+            "
+          >
+            <div
+              class="dir-btn"
+              onclick="shoot('UP')"
+              title="Shoot Up"
+              style="
+                aspect-ratio: auto;
+                padding: 8px;
+                font-size: 11px;
+                letter-spacing: 1px;
+              "
+            >
+              ↑ SHOOT
+            </div>
+            <div
+              class="dir-btn"
+              onclick="shoot('RIGHT')"
+              title="Shoot Right"
+              style="
+                aspect-ratio: auto;
+                padding: 8px;
+                font-size: 11px;
+                letter-spacing: 1px;
+              "
+            >
+              → SHOOT
+            </div>
+            <div
+              class="dir-btn"
+              onclick="shoot('DOWN')"
+              title="Shoot Down"
+              style="
+                aspect-ratio: auto;
+                padding: 8px;
+                font-size: 11px;
+                letter-spacing: 1px;
+              "
+            >
+              ↓ SHOOT
+            </div>
+            <div
+              class="dir-btn"
+              onclick="shoot('LEFT')"
+              title="Shoot Left"
+              style="
+                aspect-ratio: auto;
+                padding: 8px;
+                font-size: 11px;
+                letter-spacing: 1px;
+              "
+            >
+              ← SHOOT
+            </div>
+          </div>
+
+          <button class="btn btn-success" id="auto-btn" onclick="toggleAuto()">
+            ▶ AUTO PLAY
+          </button>
+          <button class="btn" onclick="stepOnce()" id="step-btn">
+            ⊳ STEP ONCE
+          </button>
+
+          <div class="divider"></div>
+          <div class="panel-title">Legend</div>
+          <div class="legend">
+            <div class="legend-item">
+              <div
+                class="legend-swatch"
+                style="
+                  background: var(--visited);
+                  border: 1px solid rgba(79, 142, 255, 0.3);
+                "
+              ></div>
+              Visited
+            </div>
+            <div class="legend-item">
+              <div
+                class="legend-swatch"
+                style="
+                  background: rgba(34, 197, 94, 0.12);
+                  border: 1px solid rgba(34, 197, 94, 0.4);
+                "
+              ></div>
+              Safe
+            </div>
+            <div class="legend-item">
+              <div
+                class="legend-swatch"
+                style="
+                  background: var(--unknown);
+                  border: 1px solid var(--border);
+                "
+              ></div>
+              Unknown
+            </div>
+            <div class="legend-item">
+              <div
+                class="legend-swatch"
+                style="
+                  background: rgba(239, 68, 68, 0.12);
+                  border: 1px solid rgba(239, 68, 68, 0.4);
+                "
+              ></div>
+              Danger
+            </div>
+            <div class="legend-item">
+              <div
+                class="legend-swatch"
+                style="
+                  background: var(--pit);
+                  border: 1px solid rgba(239, 68, 68, 0.6);
+                "
+              ></div>
+              Pit
+            </div>
+            <div class="legend-item">
+              <div
+                class="legend-swatch"
+                style="
+                  background: rgba(147, 51, 234, 0.2);
+                  border: 1px solid rgba(147, 51, 234, 0.6);
+                "
+              ></div>
+              Wumpus
+            </div>
+          </div>
+
+          <div class="divider"></div>
+          <div class="panel-title">Event Log</div>
+          <div class="event-feed" id="event-feed">
+            <div class="event-entry">
+              <span class="event-time">INIT</span
+              ><span>Awaiting world initialization...</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- CENTER: GAME BOARD -->
+        <div id="game-area">
+          <div id="gameover-overlay">
+            <div class="gameover-title" id="gameover-title">GAME OVER</div>
+            <div class="gameover-msg" id="gameover-msg"></div>
+            <button
+              class="btn btn-primary"
+              onclick="newGame()"
+              style="width: 200px; margin-top: 8px"
+            >
+              ↺ NEW EPISODE
+            </button>
+          </div>
+
+          <div class="score-bar" id="score-bar">
+            <div class="score-item">
+              <div class="score-label">Score</div>
+              <div class="score-val" id="score-val">—</div>
+            </div>
+            <div class="score-divider"></div>
+            <div class="score-item">
+              <div class="score-label">Cells Visited</div>
+              <div class="score-val" id="visited-val">—</div>
+            </div>
+            <div class="score-divider"></div>
+            <div class="score-item">
+              <div class="score-label">Has Gold</div>
+              <div class="score-val" id="gold-val">—</div>
+            </div>
+            <div class="score-divider"></div>
+            <div class="score-item">
+              <div class="score-label">Arrow</div>
+              <div class="score-val" id="arrow-val">—</div>
+            </div>
+            <div class="score-divider"></div>
+            <div class="score-item">
+              <div class="score-label">Wumpus</div>
+              <div class="score-val" id="wumpus-alive-val">—</div>
+            </div>
+          </div>
+
+          <div id="grid-container">
+            <div id="grid">
+              <!-- generated by JS -->
+            </div>
+          </div>
+
+          <div
+            id="no-game"
+            style="text-align: center; color: var(--text3); margin-top: 40px"
+          >
+            <div
+              style="
+                font-family: var(--font-display);
+                font-size: 32px;
+                font-weight: 800;
+                color: var(--surface3);
+                letter-spacing: 4px;
+                margin-bottom: 12px;
+              "
+            >
+              WUMPUS WORLD
+            </div>
+            <div style="font-size: 12px; letter-spacing: 2px">
+              Configure and initialize a world to begin
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT: METRICS + KB -->
+        <div class="panel" id="metrics-panel">
+          <div class="panel-title">Metrics Dashboard</div>
+
+          <div class="metric-grid">
+            <div class="metric-card">
+              <div class="metric-label">Inference Steps</div>
+              <div class="metric-val accent" id="m-steps">0</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">KB Clauses</div>
+              <div class="metric-val" id="m-clauses">0</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">Safe Cells</div>
+              <div class="metric-val safe" id="m-safe">0</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">Steps Taken</div>
+              <div class="metric-val warn" id="m-moves">0</div>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+          <div class="panel-title">Active Percepts</div>
+
+          <div class="percept-row">
+            <div class="percept-pill inactive breeze-pill" id="p-breeze">
+              ◈ BREEZE
+            </div>
+            <div class="percept-pill inactive stench-pill" id="p-stench">
+              ◉ STENCH
+            </div>
+            <div class="percept-pill inactive glitter-pill" id="p-glitter">
+              ◆ GLITTER
+            </div>
+            <div class="percept-pill inactive scream-pill" id="p-scream">
+              ◎ SCREAM
+            </div>
+          </div>
+
+          <div class="divider"></div>
+          <div class="panel-title kb-toggle" onclick="toggleKB()">
+            Knowledge Base Clauses
+            <span class="kb-arrow" id="kb-arrow">▶</span>
+          </div>
+          <div id="kb-section">
+            <div class="kb-list" id="kb-list">
+              <div class="kb-clause" style="color: var(--text3)">
+                No clauses yet...
+              </div>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+          <div class="panel-title">Inference Log</div>
+          <div class="infer-log" id="infer-log">
+            <div class="infer-entry unknown">
+              <span>Awaiting inferences...</span>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+          <div class="panel-title">Resolution Refutation</div>
+          <div
+            style="
+              background: var(--surface2);
+              border: 1px solid var(--border);
+              border-radius: var(--r);
+              padding: 12px;
+              font-size: 10px;
+              color: var(--text3);
+              line-height: 1.8;
+              letter-spacing: 0.5px;
+            "
+          >
+            <div
+              style="color: var(--text2); margin-bottom: 8px; font-size: 11px"
+            >
+              Algorithm
+            </div>
+            <div>1. Negate query literal ¬Q</div>
+            <div>2. Add ¬Q to KB as unit clause</div>
+            <div>3. Resolve all clause pairs</div>
+            <div>4. Empty clause → Q proven ✓</div>
+            <div>5. No new clauses → Q unknown</div>
+            <div class="divider" style="margin: 8px 0"></div>
+            <div style="color: var(--accent)">
+              ASK: ¬P<sub>r,c</sub> ∧ ¬W<sub>r,c</sub>
+            </div>
+            <div style="color: var(--text3)">
+              Both must be provable for SAFE
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <footer>
+        <div>WUMPUS WORLD · KNOWLEDGE-BASED AGENT · PROPOSITIONAL LOGIC</div>
+        <div
+          id="kb-formula"
+          style="color: var(--text3); font-size: 9px; letter-spacing: 1px"
+        >
+          B₍ᵣ,꜀₎ → ∨ P₍ₙ₎ &nbsp;|&nbsp; S₍ᵣ,꜀₎ → ∨ W₍ₙ₎
+        </div>
+        <div>RESOLUTION REFUTATION ENGINE v1.0</div>
+      </footer>
+    </div>
+
+    <script>
+      const API = "http://localhost:5000/api";
+
+      let state = null;
+      let autoPlay = false;
+      let autoInterval = null;
+      let moveCount = 0;
+      let safeCellCount = 0;
+      let revealData = null;
+      let isRevealed = false;
+      let kbOpen = true;
+      let kbClauses = [];
+
+      // ── INIT ─────────────────────────────────────────────────────────────────
+
+      window.addEventListener("load", () => {
+        setTimeout(() => {
+          document.getElementById("loading").classList.add("hide");
+        }, 1800);
+        setupKeyboard();
+        document.getElementById("pit-slider").addEventListener("input", (e) => {
+          document.getElementById("pit-display").textContent = e.target.value;
+        });
+      });
+
+      // ── API ───────────────────────────────────────────────────────────────────
+
+      async function api(path, method = "GET", body = null) {
+        const opts = {
+          method,
+          headers: { "Content-Type": "application/json" },
+        };
+        if (body) opts.body = JSON.stringify(body);
+        const res = await fetch(API + path, opts);
+        return res.json();
+      }
+
+      // ── GAME INIT ─────────────────────────────────────────────────────────────
+
+      async function newGame() {
+        const rows = parseInt(document.getElementById("rows-input").value) || 4;
+        const cols = parseInt(document.getElementById("cols-input").value) || 4;
+        const pits = parseInt(document.getElementById("pit-slider").value) || 2;
+
+        stopAuto();
+        moveCount = 0;
+        safeCellCount = 0;
+        revealData = null;
+        isRevealed = false;
+        kbClauses = [];
+
+        document.getElementById("gameover-overlay").classList.remove("active");
+        document.getElementById("no-game").style.display = "none";
+        document.getElementById("reveal-btn").disabled = false;
+        document.getElementById("reveal-btn").textContent = "◎ REVEAL WORLD";
+
+        document.getElementById("kb-list").innerHTML =
+          '<div class="kb-clause" style="color:var(--text3)">Initializing...</div>';
+        document.getElementById("infer-log").innerHTML = "";
+        document.getElementById("event-feed").innerHTML = "";
+
+        try {
+          state = await api("/new", "POST", { rows, cols, numPits: pits });
+          renderAll(state);
+          addEvent("INIT", `World ${rows}×${cols} — ${pits} pits`);
+          addEvent(state.event, percentsStr(state.percepts));
+          updateKBDisplay(state);
+          updateInferenceLog(state);
+        } catch (e) {
+          addEvent(
+            "ERROR",
+            "Cannot connect to Python backend. Make sure Flask server is running on port 5000.",
+          );
+        }
+      }
+
+      // ── ACTIONS ───────────────────────────────────────────────────────────────
+
+      async function move(dir) {
+        if (!state || state.gameOver) return;
+        moveCount++;
+        const s = await api("/move", "POST", { direction: dir });
+        processState(s, `MOVE ${dir}`);
+      }
+
+      async function shoot(dir) {
+        if (!state || state.gameOver) return;
+        const s = await api("/shoot", "POST", { direction: dir });
+        processState(s, `SHOOT ${dir}`);
+      }
+
+      async function climb() {
+        if (!state) return;
+        const s = await api("/climb", "POST");
+        processState(s, "CLIMB");
+      }
+
+      async function stepOnce() {
+        if (!state || state.gameOver) return;
+        moveCount++;
+        const s = await api("/auto", "POST");
+        processState(s, "AUTO STEP");
+      }
+
+      function toggleAuto() {
+        if (autoPlay) stopAuto();
+        else startAuto();
+      }
+
+      function startAuto() {
+        if (!state || state.gameOver) return;
+        autoPlay = true;
+        document.getElementById("auto-indicator").classList.add("active");
+        document.getElementById("auto-btn").textContent = "⏹ STOP AUTO";
+        autoInterval = setInterval(async () => {
+          if (!state || state.gameOver) {
+            stopAuto();
+            return;
+          }
+          moveCount++;
+          const s = await api("/auto", "POST");
+          processState(s, "AUTO");
+          if (s.gameOver || s.event === "STUCK") stopAuto();
+        }, 700);
+      }
+
+      function stopAuto() {
+        autoPlay = false;
+        clearInterval(autoInterval);
+        document.getElementById("auto-indicator").classList.remove("active");
+        document.getElementById("auto-btn").textContent = "▶ AUTO PLAY";
+      }
+
+      async function toggleReveal() {
+        if (!state) return;
+        if (!revealData) {
+          revealData = await api("/reveal");
+        }
+        isRevealed = !isRevealed;
+        document.getElementById("reveal-btn").textContent = isRevealed
+          ? "◉ HIDE WORLD"
+          : "◎ REVEAL WORLD";
+        renderGrid(state, isRevealed ? revealData : null);
+      }
+
+      // ── STATE PROCESSING ──────────────────────────────────────────────────────
+
+      function processState(s, action) {
+        state = s;
+        renderAll(s);
+        addEvent(
+          action,
+          s.event + (s.percepts?.length ? " — " + percentsStr(s.percepts) : ""),
+        );
+        updateKBDisplay(s);
+        updateInferenceLog(s);
+
+        if (s.event === "BUMP") {
+          document.getElementById("game-area").classList.add("shake");
+          setTimeout(
+            () =>
+              document.getElementById("game-area").classList.remove("shake"),
+            400,
+          );
+        }
+        if (s.gameOver) showGameOver(s);
+      }
+
+      function percentsStr(ps) {
+        if (!ps || !ps.length) return "NONE";
+        return ps.join(", ");
+      }
+
+      // ── RENDER ────────────────────────────────────────────────────────────────
+
+      function renderAll(s) {
+        if (!s) return;
+        renderGrid(s, isRevealed ? revealData : null);
+        renderMetrics(s);
+        renderPercepts(s.percepts || []);
+        renderScoreBar(s);
+      }
+
+      function renderGrid(s, reveal) {
+        const grid = document.getElementById("grid");
+        const rows = s.world.rows;
+        const cols = s.world.cols;
+
+        // calculate cell size
+        const maxW = Math.min(560, window.innerWidth - 680);
+        const maxH = window.innerHeight - 220;
+        const cellSize = Math.floor(Math.min(maxW / cols, maxH / rows, 100));
+
+        grid.style.gridTemplateColumns = `repeat(${cols}, ${cellSize}px)`;
+        grid.innerHTML = "";
+
+        // collect revealed positions
+        const pitSet = new Set(
+          (reveal?.pits || []).map((p) => `${p[0]},${p[1]}`),
+        );
+        const wumpusPos = reveal
+          ? `${reveal.wumpus[0]},${reveal.wumpus[1]}`
+          : null;
+        const goldPos = reveal ? `${reveal.gold[0]},${reveal.gold[1]}` : null;
+
+        for (let r = rows - 1; r >= 0; r--) {
+          for (let c = 0; c < cols; c++) {
+            const cell = s.grid[r][c];
+            const el = document.createElement("div");
+            el.className = "cell cell-enter";
+            el.style.width = el.style.height = `${cellSize}px`;
+
+            let cssClass = cell.status?.toLowerCase() || "unknown";
+            if (cssClass === "visited") cssClass = "visited";
+            el.classList.add(cssClass);
+            if (cell.isAgent) el.classList.add("has-agent");
+
+            // coord label
+            if (cellSize >= 50) {
+              const coord = document.createElement("div");
+              coord.className = "cell-coord";
+              coord.textContent = `${r},${c}`;
+              el.appendChild(coord);
+            }
+
+            // icons
+            if (cell.isAgent) {
+              const ag = document.createElement("div");
+              ag.className = "agent-token";
+              ag.textContent = s.agent.alive ? "◈" : "✕";
+              el.appendChild(ag);
+            } else if (reveal && pitSet.has(`${r},${c}`)) {
+              addIcon(el, "◯", "#ef4444", "PIT");
+            } else if (reveal && wumpusPos === `${r},${c}`) {
+              addIcon(
+                el,
+                "◉",
+                "#9333ea",
+                s.world.wumpusAlive ? "WUMPUS" : "DEAD",
+              );
+            } else if (
+              reveal &&
+              goldPos === `${r},${c}` &&
+              cell.isGold !== false
+            ) {
+              addIcon(el, "◆", "#fbbf24", "GOLD");
+            } else if (cell.status === "PIT") {
+              addIcon(el, "◯", "#ef4444", "PIT");
+            } else if (cell.status === "WUMPUS") {
+              addIcon(el, "◉", "#9333ea", "WUMPUS");
+            } else if (cell.isGold) {
+              addIcon(el, "◆", "#fbbf24", "GOLD");
+            } else if (cell.status === "SAFE" && !cell.isVisited) {
+              if (cellSize >= 50) addIcon(el, "✓", "#22c55e", "");
+            } else if (cell.status === "DANGER") {
+              if (cellSize >= 50) addIcon(el, "!", "#ef4444", "");
+            }
+
+            // hover tooltip
+            el.addEventListener("mouseenter", (e) =>
+              showTooltip(e, r, c, cell, reveal),
+            );
+            el.addEventListener("mouseleave", hideTooltip);
+
+            grid.appendChild(el);
+          }
+        }
+      }
+
+      function addIcon(el, icon, color, label) {
+        const i = document.createElement("div");
+        i.className = "cell-icon";
+        i.style.color = color;
+        i.textContent = icon;
+        el.appendChild(i);
+        if (label) {
+          const l = document.createElement("div");
+          l.className = "cell-status";
+          l.textContent = label;
+          el.appendChild(l);
+        }
+      }
+
+      function renderMetrics(s) {
+        document.getElementById("m-steps").textContent =
+          s.kb.totalInferenceSteps.toLocaleString();
+        document.getElementById("m-clauses").textContent = s.kb.totalClauses;
+
+        safeCellCount = s.grid
+          .flat()
+          .filter((c) => c.status === "SAFE" || c.status === "VISITED").length;
+        document.getElementById("m-safe").textContent = safeCellCount;
+        document.getElementById("m-moves").textContent = moveCount;
+      }
+
+      function renderPercepts(ps) {
+        const map = {
+          breeze: "BREEZE",
+          stench: "STENCH",
+          glitter: "GLITTER",
+          scream: "SCREAM",
+        };
+        for (const [k, v] of Object.entries(map)) {
+          const el = document.getElementById(`p-${k}`);
+          const active = ps.includes(v);
+          el.className = `percept-pill ${active ? "active" : "inactive"} ${k}`;
+        }
+      }
+
+      function renderScoreBar(s) {
+        const a = s.agent;
+        const sv = document.getElementById("score-val");
+        sv.textContent = a.score;
+        sv.className = `score-val ${a.score >= 0 ? "positive" : "negative"}`;
+        document.getElementById("h-score").textContent = a.score;
+        document.getElementById("visited-val").textContent = a.visitedCount;
+        document.getElementById("gold-val").textContent = a.hasGold
+          ? "✓ YES"
+          : "✗ NO";
+        document.getElementById("gold-val").style.color = a.hasGold
+          ? "var(--gold)"
+          : "var(--text3)";
+        document.getElementById("arrow-val").textContent = a.hasArrow
+          ? "✓ READY"
+          : "✗ FIRED";
+        document.getElementById("arrow-val").style.color = a.hasArrow
+          ? "var(--safe)"
+          : "var(--text3)";
+        document.getElementById("wumpus-alive-val").textContent = s.world
+          .wumpusAlive
+          ? "⚡ ALIVE"
+          : "✓ DEAD";
+        document.getElementById("wumpus-alive-val").style.color = s.world
+          .wumpusAlive
+          ? "var(--wumpus)"
+          : "var(--safe)";
+      }
+
+      // ── KB DISPLAY ────────────────────────────────────────────────────────────
+
+      function updateKBDisplay(s) {
+        if (!s.inference) return;
+        const list = document.getElementById("kb-list");
+
+        for (const inf of s.inference) {
+          const [r, c] = inf.cell;
+          const clauses = [];
+          if (inf.safe) clauses.push(`¬P_{${r},${c}} ∧ ¬W_{${r},${c}} [SAFE]`);
+          if (inf.pit) clauses.push(`P_{${r},${c}} [PIT PROVEN]`);
+          if (inf.wumpus) clauses.push(`W_{${r},${c}} [WUMPUS PROVEN]`);
+          if (!inf.safe && !inf.pit && !inf.wumpus) {
+            clauses.push(`(${r},${c}) → UNKNOWN [${inf.steps} steps]`);
+          }
+          for (const cl of clauses) {
+            const div = document.createElement("div");
+            div.className = "kb-clause new";
+            div.textContent = cl;
+            list.insertBefore(div, list.firstChild);
+            setTimeout(() => div.classList.remove("new"), 1000);
+          }
+        }
+      }
+
+      function updateInferenceLog(s) {
+        if (!s.inference || !s.inference.length) return;
+        const log = document.getElementById("infer-log");
+
+        for (const inf of s.inference) {
+          const [r, c] = inf.cell;
+          const entry = document.createElement("div");
+          let cls = "unknown";
+          let label = "UNKNOWN";
+          if (inf.safe) {
+            cls = "safe";
+            label = "SAFE ✓";
+          } else if (inf.pit) {
+            cls = "pit";
+            label = "PIT ✗";
+          } else if (inf.wumpus) {
+            cls = "wumpus";
+            label = "WUMPUS ✗";
+          } else if (inf.status === "DANGER") {
+            cls = "danger";
+            label = "DANGER";
+          }
+
+          entry.className = `infer-entry ${cls}`;
+          entry.innerHTML = `
+      <span>cell (${r},${c}) → ${label}</span>
+      <span class="infer-steps">${inf.steps}Δ</span>
+    `;
+          log.insertBefore(entry, log.firstChild);
+        }
+      }
+
+      // ── GAME OVER ─────────────────────────────────────────────────────────────
+
+      function showGameOver(s) {
+        const overlay = document.getElementById("gameover-overlay");
+        const title = document.getElementById("gameover-title");
+        const msg = document.getElementById("gameover-msg");
+        overlay.classList.add("active");
+
+        if (s.won) {
+          title.textContent = "VICTORY";
+          title.className = "gameover-title won";
+          msg.textContent = `Agent escaped with gold! Final score: ${s.agent.score}`;
+        } else {
+          const evtMap = {
+            FELL_IN_PIT: "Agent fell into a pit",
+            EATEN_BY_WUMPUS: "Agent was eaten by the Wumpus",
+            CLIMBED_OUT: s.agent.hasGold
+              ? "Escaped with gold!"
+              : "Escaped without gold",
+          };
+          title.textContent = s.event === "CLIMBED_OUT" ? "ESCAPED" : "DEFEAT";
+          title.className = `gameover-title ${s.event === "CLIMBED_OUT" ? "won" : "lost"}`;
+          msg.textContent =
+            (evtMap[s.event] || s.event) + ` · Score: ${s.agent.score}`;
+        }
+      }
+
+      // ── KB TOGGLE ─────────────────────────────────────────────────────────────
+
+      function toggleKB() {
+        kbOpen = !kbOpen;
+        document.getElementById("kb-section").style.display = kbOpen
+          ? ""
+          : "none";
+        document.getElementById("kb-arrow").className =
+          `kb-arrow ${kbOpen ? "open" : ""}`;
+      }
+
+      // ── TOOLTIP ───────────────────────────────────────────────────────────────
+
+      function showTooltip(e, r, c, cell, reveal) {
+        const t = document.getElementById("tooltip");
+        const pitSet = new Set(
+          (reveal?.pits || []).map((p) => `${p[0]},${p[1]}`),
+        );
+        const isWumpus = reveal
+          ? `${r},${c}` === `${reveal.wumpus[0]},${reveal.wumpus[1]}`
+          : false;
+
+        let html = `<div style="color:var(--text2);margin-bottom:6px;font-size:11px">Cell (${r},${c})</div>`;
+        html += `<div>Status: <span style="color:var(--accent)">${cell.status || "UNKNOWN"}</span></div>`;
+        if (cell.isVisited)
+          html += `<div style="color:var(--safe)">Visited ✓</div>`;
+        if (cell.isAgent)
+          html += `<div style="color:var(--accent)">Agent location</div>`;
+        if (reveal) {
+          if (pitSet.has(`${r},${c}`))
+            html += `<div style="color:var(--danger)">⚠ PIT (revealed)</div>`;
+          if (isWumpus)
+            html += `<div style="color:var(--wumpus)">⚡ WUMPUS (revealed)</div>`;
+        }
+        t.innerHTML = html;
+        t.classList.add("visible");
+        t.style.left = e.clientX + 12 + "px";
+        t.style.top = e.clientY - 10 + "px";
+      }
+
+      function hideTooltip() {
+        document.getElementById("tooltip").classList.remove("visible");
+      }
+
+      // ── EVENT LOG ─────────────────────────────────────────────────────────────
+
+      function addEvent(label, msg) {
+        const feed = document.getElementById("event-feed");
+        const entry = document.createElement("div");
+        const important = [
+          "INIT",
+          "STEP",
+          "FELL_IN_PIT",
+          "EATEN_BY_WUMPUS",
+          "WUMPUS_KILLED",
+          "CLIMBED_OUT",
+          "VICTORY",
+        ];
+        entry.className = `event-entry ${important.includes(label) ? "highlight" : ""}`;
+        entry.innerHTML = `<span class="event-time">${label.substring(0, 6)}</span><span>${msg}</span>`;
+        feed.insertBefore(entry, feed.firstChild);
+        if (feed.children.length > 60) feed.removeChild(feed.lastChild);
+      }
+
+      // ── KEYBOARD ──────────────────────────────────────────────────────────────
+
+      function setupKeyboard() {
+        document.addEventListener("keydown", (e) => {
+          if (e.target.tagName === "INPUT") return;
+          const map = {
+            ArrowUp: () => move("UP"),
+            ArrowDown: () => move("DOWN"),
+            ArrowLeft: () => move("LEFT"),
+            ArrowRight: () => move("RIGHT"),
+            KeyW: () => move("UP"),
+            KeyS: () => move("DOWN"),
+            KeyA: () => move("LEFT"),
+            KeyD: () => move("RIGHT"),
+            KeyC: () => climb(),
+            Space: () => stepOnce(),
+            KeyN: () => newGame(),
+            KeyP: () => toggleAuto(),
+          };
+          if (map[e.code]) {
+            e.preventDefault();
+            map[e.code]();
+          }
+        });
+      }
+    </script>
+  </body>
+</html>
