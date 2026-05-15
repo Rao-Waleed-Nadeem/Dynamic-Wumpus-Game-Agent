@@ -1,0 +1,4 @@
+- [x] Confirm Vercel/serverless compatibility for Flask API (remove dependency on app.run(port=5000))
+- [x] Add `handler = app` export in `api/app.py`
+- [ ] Redeploy and verify `/api/new` responds
+- [ ] Ensure frontend API calls match Vercel routing
